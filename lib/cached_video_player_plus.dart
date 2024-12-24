@@ -191,9 +191,8 @@ class CachedVideoPlayerPlusValue {
       volume: volume ?? this.volume,
       playbackSpeed: playbackSpeed ?? this.playbackSpeed,
       rotationCorrection: rotationCorrection ?? this.rotationCorrection,
-      errorDescription: errorDescription != _defaultErrorDescription
-          ? errorDescription
-          : this.errorDescription,
+      errorDescription:
+          errorDescription != _defaultErrorDescription ? errorDescription : this.errorDescription,
       isCompleted: isCompleted ?? this.isCompleted,
     );
   }
@@ -258,7 +257,6 @@ class CachedVideoPlayerPlusValue {
       );
 }
 
-final _cacheManager = VideoCacheManager();
 final _storage = GetStorage('cached_video_player_plus');
 
 String _getCacheKey(String dataSource) {
@@ -277,8 +275,7 @@ String _getCacheKey(String dataSource) {
 /// To reclaim the resources used by the player call [dispose].
 ///
 /// After [dispose] all further calls are ignored.
-class CachedVideoPlayerPlusController
-    extends ValueNotifier<CachedVideoPlayerPlusValue> {
+class CachedVideoPlayerPlusController extends ValueNotifier<CachedVideoPlayerPlusValue> {
   /// Constructs a [CachedVideoPlayerPlusController] playing a video from an asset.
   ///
   /// The name of the asset is given by the [dataSource] argument and must not be
@@ -289,12 +286,14 @@ class CachedVideoPlayerPlusController
     this.package,
     Future<ClosedCaptionFile>? closedCaptionFile,
     this.videoPlayerOptions,
+    BaseCacheManager? cacheManager,
   })  : _closedCaptionFileFuture = closedCaptionFile,
         dataSourceType = DataSourceType.asset,
         formatHint = null,
         httpHeaders = const <String, String>{},
         invalidateCacheIfOlderThan = const Duration(days: 30),
         skipCache = false,
+        _cacheManager = cacheManager ?? VideoCacheManager(),
         super(const CachedVideoPlayerPlusValue(duration: Duration.zero));
 
   /// Constructs a [CachedVideoPlayerPlusController] playing a network video.
@@ -315,9 +314,11 @@ class CachedVideoPlayerPlusController
     this.httpHeaders = const <String, String>{},
     this.invalidateCacheIfOlderThan = const Duration(days: 30),
     this.skipCache = false,
+    BaseCacheManager? cacheManager,
   })  : _closedCaptionFileFuture = closedCaptionFile,
         dataSourceType = DataSourceType.network,
         package = null,
+        _cacheManager = cacheManager ?? VideoCacheManager(),
         super(const CachedVideoPlayerPlusValue(duration: Duration.zero));
 
   /// Constructs a [CachedVideoPlayerPlusController] playing a network video.
@@ -337,10 +338,12 @@ class CachedVideoPlayerPlusController
     this.httpHeaders = const <String, String>{},
     this.invalidateCacheIfOlderThan = const Duration(days: 30),
     this.skipCache = false,
+    BaseCacheManager? cacheManager,
   })  : _closedCaptionFileFuture = closedCaptionFile,
         dataSource = url.toString(),
         dataSourceType = DataSourceType.network,
         package = null,
+        _cacheManager = cacheManager ?? VideoCacheManager(),
         super(const CachedVideoPlayerPlusValue(duration: Duration.zero));
 
   /// Constructs a [CachedVideoPlayerPlusController] playing a video from a file.
@@ -352,6 +355,7 @@ class CachedVideoPlayerPlusController
     Future<ClosedCaptionFile>? closedCaptionFile,
     this.videoPlayerOptions,
     this.httpHeaders = const <String, String>{},
+    BaseCacheManager? cacheManager,
   })  : _closedCaptionFileFuture = closedCaptionFile,
         dataSource = Uri.file(file.absolute.path).toString(),
         dataSourceType = DataSourceType.file,
@@ -359,6 +363,7 @@ class CachedVideoPlayerPlusController
         formatHint = null,
         invalidateCacheIfOlderThan = const Duration(days: 30),
         skipCache = false,
+        _cacheManager = cacheManager ?? VideoCacheManager(),
         super(const CachedVideoPlayerPlusValue(duration: Duration.zero));
 
   /// Constructs a [CachedVideoPlayerPlusController] playing a video from a contentUri.
@@ -369,6 +374,7 @@ class CachedVideoPlayerPlusController
     Uri contentUri, {
     Future<ClosedCaptionFile>? closedCaptionFile,
     this.videoPlayerOptions,
+    BaseCacheManager? cacheManager,
   })  : assert(
           defaultTargetPlatform == TargetPlatform.android,
           'CachedVideoPlayerPlusController.contentUri is only supported on Android.',
@@ -381,6 +387,7 @@ class CachedVideoPlayerPlusController
         httpHeaders = const <String, String>{},
         invalidateCacheIfOlderThan = const Duration(days: 30),
         skipCache = false,
+        _cacheManager = cacheManager ?? VideoCacheManager(),
         super(const CachedVideoPlayerPlusValue(duration: Duration.zero));
 
   /// The URI to the video file. This will be in different formats depending on
@@ -412,6 +419,8 @@ class CachedVideoPlayerPlusController
 
   /// If set to true, it will skip the cache and use the video from the network.
   final bool skipCache;
+
+  final BaseCacheManager _cacheManager;
 
   Future<ClosedCaptionFile>? _closedCaptionFileFuture;
   ClosedCaptionFile? _closedCaptionFile;
@@ -455,23 +464,23 @@ class CachedVideoPlayerPlusController
   }
 
   /// This will remove cached file from cache of the given [url].
-  static Future<void> removeFileFromCache(String url) async {
+  static Future<void> removeFileFromCache(String url, {BaseCacheManager? cacheManager}) async {
     await _storage.initStorage;
 
     url = Uri.parse(url).toString();
 
     await Future.wait([
-      _cacheManager.removeFile(url),
+      (cacheManager ?? VideoCacheManager()).removeFile(url),
       _storage.remove('cached_video_player_plus_video_expiration_of_$url'),
     ]);
   }
 
   /// Clears all cached videos.
-  static Future<void> clearAllCache() async {
+  static Future<void> clearAllCache({BaseCacheManager? cacheManager}) async {
     await _storage.initStorage;
 
     await Future.wait([
-      _cacheManager.emptyCache(),
+      (cacheManager ?? VideoCacheManager()).emptyCache(),
       _storage.erase(),
     ]);
   }
@@ -516,9 +525,7 @@ class CachedVideoPlayerPlusController
       }
 
       if (cachedFile == null) {
-        _cacheManager
-            .downloadFile(dataSource, authHeaders: httpHeaders)
-            .then((_) {
+        _cacheManager.downloadFile(dataSource, authHeaders: httpHeaders).then((_) {
           _storage.write(
             _getCacheKey(dataSource),
             DateTime.timestamp().millisecondsSinceEpoch,
@@ -529,15 +536,12 @@ class CachedVideoPlayerPlusController
         isCacheAvailable = true;
       }
 
-      realDataSource = isCacheAvailable
-          ? Uri.file(cachedFile!.file.path).toString()
-          : dataSource;
+      realDataSource = isCacheAvailable ? Uri.file(cachedFile!.file.path).toString() : dataSource;
     } else {
       realDataSource = dataSource;
     }
 
-    final bool allowBackgroundPlayback =
-        videoPlayerOptions?.allowBackgroundPlayback ?? false;
+    final bool allowBackgroundPlayback = videoPlayerOptions?.allowBackgroundPlayback ?? false;
     if (!allowBackgroundPlayback) {
       _lifeCycleObserver = _VideoAppLifeCycleObserver(this);
     }
@@ -554,9 +558,8 @@ class CachedVideoPlayerPlusController
         );
       case DataSourceType.network:
         dataSourceDescription = DataSource(
-          sourceType: _shouldUseCache && isCacheAvailable
-              ? DataSourceType.file
-              : DataSourceType.network,
+          sourceType:
+              _shouldUseCache && isCacheAvailable ? DataSourceType.file : DataSourceType.network,
           uri: realDataSource,
           formatHint: formatHint,
           httpHeaders: httpHeaders,
@@ -580,8 +583,8 @@ class CachedVideoPlayerPlusController
       );
     }
 
-    _textureId = (await _videoPlayerPlatform.create(dataSourceDescription)) ??
-        kUninitializedTextureId;
+    _textureId =
+        (await _videoPlayerPlatform.create(dataSourceDescription)) ?? kUninitializedTextureId;
     _creatingCompleter!.complete(null);
     final Completer<void> initializingCompleter = Completer<void>();
 
@@ -1116,8 +1119,7 @@ class _VideoScrubberState extends State<VideoScrubber> {
         seekToRelativePosition(details.globalPosition);
       },
       onHorizontalDragEnd: (DragEndDetails details) {
-        if (_controllerWasPlaying &&
-            controller.value.position != controller.value.duration) {
+        if (_controllerWasPlaying && controller.value.position != controller.value.duration) {
           controller.play();
         }
       },
