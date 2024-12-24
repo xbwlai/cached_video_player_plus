@@ -259,10 +259,10 @@ class CachedVideoPlayerPlusValue {
 
 final _storage = GetStorage('cached_video_player_plus');
 
-String _getCacheKey(String dataSource) {
-  return 'cached_video_player_plus_video_expiration_of_${Uri.parse(
-    dataSource,
-  )}';
+String _getCacheKey(String dataSource, {String? cacheKey}) {
+  return 'cached_video_player_plus_video_expiration_of_${cacheKey ?? Uri.parse(
+        dataSource,
+      )}';
 }
 
 /// Controls a platform video player, and provides updates when the state is
@@ -287,6 +287,7 @@ class CachedVideoPlayerPlusController extends ValueNotifier<CachedVideoPlayerPlu
     Future<ClosedCaptionFile>? closedCaptionFile,
     this.videoPlayerOptions,
     BaseCacheManager? cacheManager,
+    String? cacheKey,
   })  : _closedCaptionFileFuture = closedCaptionFile,
         dataSourceType = DataSourceType.asset,
         formatHint = null,
@@ -294,6 +295,7 @@ class CachedVideoPlayerPlusController extends ValueNotifier<CachedVideoPlayerPlu
         invalidateCacheIfOlderThan = const Duration(days: 30),
         skipCache = false,
         _cacheManager = cacheManager ?? VideoCacheManager(),
+        _customCacheKey = cacheKey,
         super(const CachedVideoPlayerPlusValue(duration: Duration.zero));
 
   /// Constructs a [CachedVideoPlayerPlusController] playing a network video.
@@ -315,10 +317,12 @@ class CachedVideoPlayerPlusController extends ValueNotifier<CachedVideoPlayerPlu
     this.invalidateCacheIfOlderThan = const Duration(days: 30),
     this.skipCache = false,
     BaseCacheManager? cacheManager,
+    String? cacheKey,
   })  : _closedCaptionFileFuture = closedCaptionFile,
         dataSourceType = DataSourceType.network,
         package = null,
         _cacheManager = cacheManager ?? VideoCacheManager(),
+        _customCacheKey = cacheKey,
         super(const CachedVideoPlayerPlusValue(duration: Duration.zero));
 
   /// Constructs a [CachedVideoPlayerPlusController] playing a network video.
@@ -339,11 +343,13 @@ class CachedVideoPlayerPlusController extends ValueNotifier<CachedVideoPlayerPlu
     this.invalidateCacheIfOlderThan = const Duration(days: 30),
     this.skipCache = false,
     BaseCacheManager? cacheManager,
+    String? cacheKey,
   })  : _closedCaptionFileFuture = closedCaptionFile,
         dataSource = url.toString(),
         dataSourceType = DataSourceType.network,
         package = null,
         _cacheManager = cacheManager ?? VideoCacheManager(),
+        _customCacheKey = cacheKey,
         super(const CachedVideoPlayerPlusValue(duration: Duration.zero));
 
   /// Constructs a [CachedVideoPlayerPlusController] playing a video from a file.
@@ -356,6 +362,7 @@ class CachedVideoPlayerPlusController extends ValueNotifier<CachedVideoPlayerPlu
     this.videoPlayerOptions,
     this.httpHeaders = const <String, String>{},
     BaseCacheManager? cacheManager,
+    String? cacheKey,
   })  : _closedCaptionFileFuture = closedCaptionFile,
         dataSource = Uri.file(file.absolute.path).toString(),
         dataSourceType = DataSourceType.file,
@@ -364,6 +371,7 @@ class CachedVideoPlayerPlusController extends ValueNotifier<CachedVideoPlayerPlu
         invalidateCacheIfOlderThan = const Duration(days: 30),
         skipCache = false,
         _cacheManager = cacheManager ?? VideoCacheManager(),
+        _customCacheKey = cacheKey,
         super(const CachedVideoPlayerPlusValue(duration: Duration.zero));
 
   /// Constructs a [CachedVideoPlayerPlusController] playing a video from a contentUri.
@@ -375,6 +383,7 @@ class CachedVideoPlayerPlusController extends ValueNotifier<CachedVideoPlayerPlu
     Future<ClosedCaptionFile>? closedCaptionFile,
     this.videoPlayerOptions,
     BaseCacheManager? cacheManager,
+    String? cacheKey,
   })  : assert(
           defaultTargetPlatform == TargetPlatform.android,
           'CachedVideoPlayerPlusController.contentUri is only supported on Android.',
@@ -388,6 +397,7 @@ class CachedVideoPlayerPlusController extends ValueNotifier<CachedVideoPlayerPlu
         invalidateCacheIfOlderThan = const Duration(days: 30),
         skipCache = false,
         _cacheManager = cacheManager ?? VideoCacheManager(),
+        _customCacheKey = cacheKey,
         super(const CachedVideoPlayerPlusValue(duration: Duration.zero));
 
   /// The URI to the video file. This will be in different formats depending on
@@ -421,6 +431,8 @@ class CachedVideoPlayerPlusController extends ValueNotifier<CachedVideoPlayerPlu
   final bool skipCache;
 
   final BaseCacheManager _cacheManager;
+  final String? _customCacheKey;
+  String get _cacheKey => _customCacheKey ?? _getCacheKey(dataSource);
 
   Future<ClosedCaptionFile>? _closedCaptionFileFuture;
   ClosedCaptionFile? _closedCaptionFile;
@@ -459,19 +471,20 @@ class CachedVideoPlayerPlusController extends ValueNotifier<CachedVideoPlayerPlu
 
     await Future.wait([
       _cacheManager.removeFile(dataSource),
-      _storage.remove(_getCacheKey(dataSource)),
+      _storage.remove(_cacheKey),
     ]);
   }
 
   /// This will remove cached file from cache of the given [url].
-  static Future<void> removeFileFromCache(String url, {BaseCacheManager? cacheManager}) async {
+  static Future<void> removeFileFromCache(String url,
+      {BaseCacheManager? cacheManager, String? cacheKey}) async {
     await _storage.initStorage;
 
     url = Uri.parse(url).toString();
 
     await Future.wait([
       (cacheManager ?? VideoCacheManager()).removeFile(url),
-      _storage.remove('cached_video_player_plus_video_expiration_of_$url'),
+      _storage.remove('cached_video_player_plus_video_expiration_of_${cacheKey ?? url}'),
     ]);
   }
 
@@ -498,7 +511,7 @@ class CachedVideoPlayerPlusController extends ValueNotifier<CachedVideoPlayerPlu
       debugPrint('Cached video of [$dataSource] is: ${cachedFile?.file.path}');
 
       if (cachedFile != null) {
-        final cachedElapsedMillis = _storage.read(_getCacheKey(dataSource));
+        final cachedElapsedMillis = _storage.read(_cacheKey);
 
         if (cachedElapsedMillis != null) {
           final now = DateTime.timestamp();
@@ -527,7 +540,7 @@ class CachedVideoPlayerPlusController extends ValueNotifier<CachedVideoPlayerPlu
       if (cachedFile == null) {
         _cacheManager.downloadFile(dataSource, authHeaders: httpHeaders).then((_) {
           _storage.write(
-            _getCacheKey(dataSource),
+            _cacheKey,
             DateTime.timestamp().millisecondsSinceEpoch,
           );
           debugPrint('Cached video [$dataSource] successfully.');
