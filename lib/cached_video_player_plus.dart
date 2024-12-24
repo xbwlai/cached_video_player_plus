@@ -506,7 +506,7 @@ class CachedVideoPlayerPlusController extends ValueNotifier<CachedVideoPlayerPlu
     bool isCacheAvailable = false;
 
     if (dataSourceType == DataSourceType.network && _shouldUseCache) {
-      FileInfo? cachedFile = await _cacheManager.getFileFromCache(dataSource);
+      FileInfo? cachedFile = await _cacheManager.getFileFromCache(_cacheKey);
 
       debugPrint('Cached video of [$dataSource] is: ${cachedFile?.file.path}');
 
@@ -538,7 +538,7 @@ class CachedVideoPlayerPlusController extends ValueNotifier<CachedVideoPlayerPlu
       }
 
       if (cachedFile == null) {
-        _cacheManager.downloadFile(dataSource, authHeaders: httpHeaders).then((_) {
+        _cacheManager.downloadFile(dataSource, authHeaders: httpHeaders, key: _cacheKey).then((_) {
           _storage.write(
             _cacheKey,
             DateTime.timestamp().millisecondsSinceEpoch,
